@@ -691,26 +691,114 @@
         }
 
         // Analyze city function
-        async function analyzeCity() {
-            const cityInput = document.getElementById('citySearch').value;
-            document.getElementById('loadingOverlay').classList.add('active');
-            
-            try {
-                if (demoMode) {
-                    // Use demo data
-                    await analyzeDemoCity('chicago');
-                } else {
-                    // Try to fetch live data
-                    await analyzeLiveCity(cityInput);
+        async function analyzeLiveCity(cityName) {
+    try {
+        // Step 1: Geocode city to get location and bounds
+        console.log('Geocoding city:', cityName);
+        const geoResponse = await fetch(
+            `${API_CONFIG.osm.nominatimUrl}/search?q=${encodeURIComponent(cityName)}&format=json&limit=1`,
+            {
+                headers: {
+                    'User-Agent': 'FoodDesertMapper/1.0'
                 }
-            } catch (error) {
-                console.error('Analysis error:', error);
-                alert('Error analyzing city. Using demo data instead.');
-                await analyzeDemoCity('chicago');
-            } finally {
-                document.getElementById('loadingOverlay').classList.remove('active');
             }
+        );
+        const geoData = await geoResponse.json();
+        
+        if (!geoData || geoData.length === 0) {
+            throw new Error('City not found');
         }
+        
+        const cityInfo = geoData[0];
+        const bounds = cityInfo.boundingbox; // [south, north, west, east]
+        console.log('City bounds:', bounds);
+        
+        // Center map on city
+        map.setView([parseFloat(cityInfo.lat), parseFloat(cityInfo.lon)], 11);
+        
+        // Step 2: For now, we'll use a simplified approach
+        // In production, you'd need to determine state/county codes from the geocoded data
+        // For this demo, we'll fetch stores and show a basic visualization
+        
+        // Step 3: Fetch store locations from OSM
+        console.log('Fetching stores...');
+        const osmQuery = `
+            [out:json][timeout:25];
+            (
+              node["shop"="supermarket"](${bounds[0]},${bounds[2]},${bounds[1]},${bounds[3]});
+              way["shop"="supermarket"](${bounds[0]},${bounds[2]},${bounds[1]},${bounds[3]});
+            );
+            out center;
+        `;
+        
+        const osmResponse = await fetch(API_CONFIG.osm.overpassUrl, {
+            method: 'POST',
+            body: osmQuery,
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded'
+            }
+        });
+        const osmData = await osmResponse.json();
+        
+        console.log('Found stores:', osmData.elements.length);
+        
+        // Clear existing layers
+        tractLayers.forEach(layer => map.removeLayer(layer));
+        storeMarkers.forEach(marker => map.removeLayer(marker));
+        tractLayers = [];
+        storeMarkers = [];
+        
+        // Add store markers
+        if (osmData.elements && osmData.elements.length > 0) {
+            osmData.elements.forEach(element => {
+                let lat, lng;
+                
+                if (element.type === 'node') {
+                    lat = element.lat;
+                    lng = element.lon;
+                } else if (element.type === 'way' && element.center) {
+                    lat = element.center.lat;
+                    lng = element.center.lon;
+                }
+                
+                if (lat && lng) {
+                    const marker = L.marker([lat, lng], {
+                        icon: L.divIcon({
+                            className: 'store-marker',
+                            html: '🏪',
+                            iconSize: [30, 30]
+                        })
+                    }).addTo(map);
+                    
+                    const storeName = element.tags?.name || 'Supermarket';
+                    marker.bindPopup(`<strong>${storeName}</strong>`);
+                    storeMarkers.push(marker);
+                }
+            });
+            
+            alert(`Found ${storeMarkers.length} supermarkets in ${cityName}!\n\nNote: Full census tract analysis requires additional data processing. Currently showing store locations only.`);
+        } else {
+            alert('No supermarkets found in this area via OpenStreetMap data.');
+        }
+        
+        // Update status
+        document.getElementById('apiStatus').textContent = `✅ LIVE MODE - Showing stores for ${cityName}`;
+        document.getElementById('apiStatus').className = 'api-status live';
+        
+        // For full census integration, you would need to:
+        // 1. Extract state/county FIPS codes from geocoded location
+        // 2. Fetch census tract data with your API key
+        // 3. Get tract boundaries (GeoJSON)
+        // 4. Calculate distances from each tract to nearest store
+        // 5. Classify tracts based on income + distance
+        
+    } catch (error) {
+        console.error('Live API error:', error);
+        alert(`Error fetching live data: ${error.message}\n\nFalling back to demo mode.`);
+        document.getElementById('apiStatus').textContent = '🔸 Live API Failed - Using Demo';
+        await analyzeDemoCity('chicago');
+    }
+}
 
         async function analyzeDemoCity(cityKey) {
             const data = DEMO_DATA[cityKey];
