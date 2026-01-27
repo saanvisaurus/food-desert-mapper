@@ -759,12 +759,6 @@
         }
 
         async function analyzeLiveCity(cityName) {
-            // This function would make real API calls when deployed
-            // For now, it falls back to demo mode
-            
-            /* Example API integration code (uncomment when deploying):
-            
-            // Step 1: Geocode city
             const geoResponse = await fetch(
                 `${API_CONFIG.osm.nominatimUrl}/search?q=${encodeURIComponent(cityName)}&format=json`
             );
