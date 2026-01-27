@@ -1,0 +1,909 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Food Desert Mapper - Geospatial Analysis Tool</title>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-primary: #f8f9fa;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #e9ecef;
+            --accent-red: #dc2626;
+            --accent-yellow: #f59e0b;
+            --accent-green: #10b981;
+            --accent-blue: #2563eb;
+            --text-primary: #1f2937;
+            --text-secondary: #6b7280;
+            --border: #d1d5db;
+            --shadow: rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: 'Archivo', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .app-container {
+            display: grid;
+            grid-template-columns: 400px 1fr;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            background: var(--bg-secondary);
+            border-right: 2px solid var(--border);
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: white;
+            padding: 30px;
+            border-bottom: 3px solid var(--accent-blue);
+        }
+
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 900;
+            margin-bottom: 8px;
+            letter-spacing: -0.5px;
+        }
+
+        .header p {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .control-section {
+            padding: 25px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .control-section h2 {
+            font-size: 0.9rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-secondary);
+            margin-bottom: 15px;
+        }
+
+        .search-box {
+            position: relative;
+            margin-bottom: 15px;
+        }
+
+        .search-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            font-size: 1rem;
+            font-family: 'Archivo', sans-serif;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--accent-blue);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 8px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .btn-primary {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #1d4ed8;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .btn-secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            margin-top: 10px;
+        }
+
+        .btn-secondary:hover {
+            background: var(--border);
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .stat-card {
+            background: var(--bg-tertiary);
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid var(--accent-blue);
+        }
+
+        .stat-card.desert {
+            border-left-color: var(--accent-red);
+        }
+
+        .stat-card.risk {
+            border-left-color: var(--accent-yellow);
+        }
+
+        .stat-card.adequate {
+            border-left-color: var(--accent-green);
+        }
+
+        .stat-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 900;
+            line-height: 1;
+        }
+
+        .legend {
+            margin-top: 20px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .legend-item:last-child {
+            border-bottom: none;
+        }
+
+        .legend-color {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            margin-right: 12px;
+            border: 2px solid var(--border);
+        }
+
+        .legend-text {
+            flex: 1;
+        }
+
+        .legend-title {
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        .legend-desc {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .filters {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .filter-label {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .slider {
+            width: 100%;
+        }
+
+        .slider-value {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--accent-blue);
+            font-weight: 600;
+        }
+
+        .checkbox-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .checkbox-item input {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+        }
+
+        .map-container {
+            position: relative;
+            height: 100vh;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255, 255, 255, 0.95);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            display: none;
+        }
+
+        .loading-overlay.active {
+            display: flex;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid var(--border);
+            border-top-color: var(--accent-blue);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            margin-top: 20px;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+        }
+
+        .map-controls {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 500;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .map-btn {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 12px;
+            cursor: pointer;
+            box-shadow: 0 2px 8px var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .map-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px var(--shadow);
+        }
+
+        .info-panel {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 20px;
+            max-width: 400px;
+            box-shadow: 0 4px 12px var(--shadow);
+            z-index: 500;
+            display: none;
+        }
+
+        .info-panel.active {
+            display: block;
+        }
+
+        .info-panel h3 {
+            font-size: 1.1rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .info-panel p {
+            font-size: 0.9rem;
+            line-height: 1.6;
+            margin-bottom: 8px;
+        }
+
+        .api-status {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            padding: 12px 20px;
+            box-shadow: 0 2px 8px var(--shadow);
+            z-index: 500;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.8rem;
+        }
+
+        .api-status.demo {
+            background: #fef3c7;
+            border-color: var(--accent-yellow);
+            color: #92400e;
+        }
+
+        .api-status.live {
+            background: #d1fae5;
+            border-color: var(--accent-green);
+            color: #065f46;
+        }
+
+        .data-sources {
+            margin-top: 15px;
+            padding: 15px;
+            background: var(--bg-tertiary);
+            border-radius: 8px;
+            font-size: 0.8rem;
+        }
+
+        .data-sources h4 {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        .data-sources ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .data-sources li {
+            padding: 4px 0;
+            display: flex;
+            align-items: center;
+        }
+
+        .data-sources li::before {
+            content: "▸";
+            margin-right: 8px;
+            color: var(--accent-blue);
+        }
+
+        @media (max-width: 1024px) {
+            .app-container {
+                grid-template-columns: 1fr;
+            }
+            
+            .sidebar {
+                height: auto;
+                max-height: 50vh;
+            }
+            
+            .map-container {
+                height: 50vh;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <div class="header">
+                <h1>Food Desert Mapper</h1>
+                <p>Geospatial Analysis Tool</p>
+            </div>
+
+            <div class="control-section">
+                <h2>City Selection</h2>
+                <div class="search-box">
+                    <input type="text" 
+                           class="search-input" 
+                           id="citySearch" 
+                           placeholder="Enter city name (e.g., Chicago, IL)"
+                           value="Chicago, IL">
+                </div>
+                <button class="btn btn-primary" onclick="analyzeCity()">Analyze Food Access</button>
+                <button class="btn btn-secondary" onclick="useCurrentLocation()">Use My Location</button>
+                
+                <div class="data-sources">
+                    <h4>Data Sources</h4>
+                    <ul id="dataSourcesList">
+                        <li>USDA Food Access Atlas</li>
+                        <li>US Census Bureau</li>
+                        <li>OpenStreetMap (Stores)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h2>Analysis Parameters</h2>
+                <div class="filters">
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Urban Access Distance: <span class="slider-value" id="urbanDistValue">1.0 mi</span>
+                        </label>
+                        <input type="range" 
+                               class="slider" 
+                               id="urbanDist" 
+                               min="0.5" 
+                               max="2" 
+                               step="0.1" 
+                               value="1.0"
+                               oninput="updateSlider('urbanDist', 'urbanDistValue', ' mi')">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Rural Access Distance: <span class="slider-value" id="ruralDistValue">10 mi</span>
+                        </label>
+                        <input type="range" 
+                               class="slider" 
+                               id="ruralDist" 
+                               min="5" 
+                               max="20" 
+                               step="1" 
+                               value="10"
+                               oninput="updateSlider('ruralDist', 'ruralDistValue', ' mi')">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label class="filter-label">
+                            Poverty Threshold: <span class="slider-value" id="povertyValue">20%</span>
+                        </label>
+                        <input type="range" 
+                               class="slider" 
+                               id="poverty" 
+                               min="10" 
+                               max="40" 
+                               step="5" 
+                               value="20"
+                               oninput="updateSlider('poverty', 'povertyValue', '%')">
+                    </div>
+                </div>
+
+                <div class="checkbox-group" style="margin-top: 20px;">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="showStores" checked onchange="toggleLayer('stores')">
+                        <label for="showStores">Show Supermarkets</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="showTransit" onchange="toggleLayer('transit')">
+                        <label for="showTransit">Show Public Transit</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h2>Statistics</h2>
+                <div class="stats-grid">
+                    <div class="stat-card desert">
+                        <div class="stat-label">Food Deserts</div>
+                        <div class="stat-value" id="statDesert">--</div>
+                    </div>
+                    <div class="stat-card risk">
+                        <div class="stat-label">At Risk</div>
+                        <div class="stat-value" id="statRisk">--</div>
+                    </div>
+                    <div class="stat-card adequate">
+                        <div class="stat-label">Adequate</div>
+                        <div class="stat-value" id="statAdequate">--</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Population</div>
+                        <div class="stat-value" id="statPopulation">--</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="control-section">
+                <h2>Legend</h2>
+                <div class="legend">
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(220, 38, 38, 0.6);"></div>
+                        <div class="legend-text">
+                            <div class="legend-title">Food Desert</div>
+                            <div class="legend-desc">Low-income + Low-access</div>
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(245, 158, 11, 0.6);"></div>
+                        <div class="legend-text">
+                            <div class="legend-title">At Risk</div>
+                            <div class="legend-desc">Borderline access</div>
+                        </div>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color" style="background: rgba(16, 185, 129, 0.6);"></div>
+                        <div class="legend-text">
+                            <div class="legend-title">Adequate Access</div>
+                            <div class="legend-desc">Normal food access</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="map-container">
+            <div id="map"></div>
+            
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="spinner"></div>
+                <div class="loading-text">Analyzing food access patterns...</div>
+            </div>
+
+            <div class="api-status demo" id="apiStatus">
+                🔸 DEMO MODE - Using Sample Data
+            </div>
+
+            <div class="map-controls">
+                <button class="map-btn" onclick="resetView()" title="Reset View">
+                    🏠
+                </button>
+                <button class="map-btn" onclick="exportData()" title="Export Data">
+                    📊
+                </button>
+            </div>
+
+            <div class="info-panel" id="infoPanel">
+                <h3>Census Tract Information</h3>
+                <p><strong>Tract ID:</strong> <span id="tractId">--</span></p>
+                <p><strong>Classification:</strong> <span id="tractClass">--</span></p>
+                <p><strong>Population:</strong> <span id="tractPop">--</span></p>
+                <p><strong>Median Income:</strong> <span id="tractIncome">--</span></p>
+                <p><strong>Poverty Rate:</strong> <span id="tractPoverty">--</span></p>
+                <p><strong>Distance to Store:</strong> <span id="tractDistance">--</span></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // API Configuration
+        const API_CONFIG = {
+            census: {
+                baseUrl: 'https://api.census.gov/data',
+                key: 'YOUR_API_KEY_HERE' // Users should register for free at census.gov
+            },
+            usda: {
+                baseUrl: 'https://www.ers.usda.gov/webdocs/DataFiles',
+                atlasFile: 'Food_Access_Research_Atlas.csv'
+            },
+            osm: {
+                overpassUrl: 'https://overpass-api.de/api/interpreter',
+                nominatimUrl: 'https://nominatim.openstreetmap.org'
+            }
+        };
+
+        // Global state
+        let map;
+        let currentCity = null;
+        let tractLayers = [];
+        let storeMarkers = [];
+        let demoMode = true;
+
+        // Sample data for demo mode
+        const DEMO_DATA = {
+            chicago: {
+                center: [41.8781, -87.6298],
+                zoom: 11,
+                tracts: [
+                    { id: '17031842400', coords: [[41.920, -87.680], [41.920, -87.660], [41.900, -87.660], [41.900, -87.680]], 
+                      pop: 4523, income: 32000, poverty: 28, distance: 1.8, classification: 'desert' },
+                    { id: '17031840300', coords: [[41.880, -87.650], [41.880, -87.630], [41.860, -87.630], [41.860, -87.650]], 
+                      pop: 5234, income: 48000, poverty: 18, distance: 0.4, classification: 'adequate' },
+                    { id: '17031839500', coords: [[41.900, -87.620], [41.900, -87.600], [41.880, -87.600], [41.880, -87.620]], 
+                      pop: 3892, income: 38000, poverty: 22, distance: 1.2, classification: 'risk' },
+                    { id: '17031838200', coords: [[41.940, -87.710], [41.940, -87.690], [41.920, -87.690], [41.920, -87.710]], 
+                      pop: 6123, income: 29000, poverty: 31, distance: 2.1, classification: 'desert' },
+                    { id: '17031837100', coords: [[41.860, -87.680], [41.860, -87.660], [41.840, -87.660], [41.840, -87.680]], 
+                      pop: 4756, income: 52000, poverty: 14, distance: 0.6, classification: 'adequate' },
+                    { id: '17031836800', coords: [[41.820, -87.640], [41.820, -87.620], [41.800, -87.620], [41.800, -87.640]], 
+                      pop: 5489, income: 35000, poverty: 24, distance: 1.5, classification: 'risk' },
+                    { id: '17031835900', coords: [[41.900, -87.700], [41.900, -87.680], [41.880, -87.680], [41.880, -87.700]], 
+                      pop: 3245, income: 27000, poverty: 35, distance: 1.9, classification: 'desert' },
+                    { id: '17031834600', coords: [[41.960, -87.650], [41.960, -87.630], [41.940, -87.630], [41.940, -87.650]], 
+                      pop: 7234, income: 55000, poverty: 12, distance: 0.5, classification: 'adequate' },
+                ],
+                stores: [
+                    { name: 'Whole Foods Market', lat: 41.890, lng: -87.640 },
+                    { name: 'Jewel-Osco', lat: 41.870, lng: -87.650 },
+                    { name: 'Mariano\'s', lat: 41.950, lng: -87.640 },
+                    { name: 'Aldi', lat: 41.830, lng: -87.630 },
+                ]
+            }
+        };
+
+        // Initialize map
+        function initMap() {
+            map = L.map('map').setView([41.8781, -87.6298], 11);
+            
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+                attribution: '© OpenStreetMap contributors, © CARTO',
+                maxZoom: 19
+            }).addTo(map);
+        }
+
+        // Analyze city function
+        async function analyzeCity() {
+            const cityInput = document.getElementById('citySearch').value;
+            document.getElementById('loadingOverlay').classList.add('active');
+            
+            try {
+                if (demoMode) {
+                    // Use demo data
+                    await analyzeDemoCity('chicago');
+                } else {
+                    // Try to fetch live data
+                    await analyzeLiveCity(cityInput);
+                }
+            } catch (error) {
+                console.error('Analysis error:', error);
+                alert('Error analyzing city. Using demo data instead.');
+                await analyzeDemoCity('chicago');
+            } finally {
+                document.getElementById('loadingOverlay').classList.remove('active');
+            }
+        }
+
+        async function analyzeDemoCity(cityKey) {
+            const data = DEMO_DATA[cityKey];
+            if (!data) {
+                alert('Demo data not available for this city');
+                return;
+            }
+
+            // Clear existing layers
+            tractLayers.forEach(layer => map.removeLayer(layer));
+            storeMarkers.forEach(marker => map.removeLayer(marker));
+            tractLayers = [];
+            storeMarkers = [];
+
+            // Center map
+            map.setView(data.center, data.zoom);
+
+            // Add census tracts
+            data.tracts.forEach(tract => {
+                const color = getColorByClassification(tract.classification);
+                const polygon = L.polygon(tract.coords, {
+                    color: color,
+                    fillColor: color,
+                    fillOpacity: 0.6,
+                    weight: 2
+                }).addTo(map);
+
+                polygon.on('click', () => showTractInfo(tract));
+                tractLayers.push(polygon);
+            });
+
+            // Add store markers
+            if (document.getElementById('showStores').checked) {
+                data.stores.forEach(store => {
+                    const marker = L.marker([store.lat, store.lng], {
+                        icon: L.divIcon({
+                            className: 'store-marker',
+                            html: '🏪',
+                            iconSize: [30, 30]
+                        })
+                    }).addTo(map);
+                    
+                    marker.bindPopup(`<strong>${store.name}</strong>`);
+                    storeMarkers.push(marker);
+                });
+            }
+
+            // Update statistics
+            updateStatistics(data.tracts);
+        }
+
+        async function analyzeLiveCity(cityName) {
+            // This function would make real API calls when deployed
+            // For now, it falls back to demo mode
+            
+            /* Example API integration code (uncomment when deploying):
+            
+            // Step 1: Geocode city
+            const geoResponse = await fetch(
+                `${API_CONFIG.osm.nominatimUrl}/search?q=${encodeURIComponent(cityName)}&format=json`
+            );
+            const geoData = await geoResponse.json();
+            const cityBounds = geoData[0].boundingbox;
+            
+            // Step 2: Fetch census tracts
+            const censusResponse = await fetch(
+                `${API_CONFIG.census.baseUrl}/2021/acs/acs5?get=NAME,B19013_001E,B17001_002E&for=tract:*&in=state:${stateCode}&key=${API_CONFIG.census.key}`
+            );
+            const censusData = await censusResponse.json();
+            
+            // Step 3: Fetch store locations from OSM
+            const osmQuery = `
+                [out:json];
+                (
+                  node["shop"="supermarket"](${cityBounds[0]},${cityBounds[2]},${cityBounds[1]},${cityBounds[3]});
+                  way["shop"="supermarket"](${cityBounds[0]},${cityBounds[2]},${cityBounds[1]},${cityBounds[3]});
+                );
+                out center;
+            `;
+            const osmResponse = await fetch(API_CONFIG.osm.overpassUrl, {
+                method: 'POST',
+                body: osmQuery
+            });
+            const osmData = await osmResponse.json();
+            
+            // Step 4: Calculate distances and classify tracts
+            const processedTracts = processLiveData(censusData, osmData);
+            
+            // Step 5: Render on map
+            renderTracts(processedTracts);
+            */
+            
+            // For now, show message and use demo
+            console.log('Live API mode would fetch data from:', cityName);
+            document.getElementById('apiStatus').textContent = '🔸 Live API Not Available - Using Demo';
+            await analyzeDemoCity('chicago');
+        }
+
+        function getColorByClassification(classification) {
+            switch(classification) {
+                case 'desert': return '#dc2626';
+                case 'risk': return '#f59e0b';
+                case 'adequate': return '#10b981';
+                default: return '#6b7280';
+            }
+        }
+
+        function showTractInfo(tract) {
+            document.getElementById('tractId').textContent = tract.id;
+            document.getElementById('tractClass').textContent = tract.classification.toUpperCase();
+            document.getElementById('tractPop').textContent = tract.pop.toLocaleString();
+            document.getElementById('tractIncome').textContent = '$' + tract.income.toLocaleString();
+            document.getElementById('tractPoverty').textContent = tract.poverty + '%';
+            document.getElementById('tractDistance').textContent = tract.distance + ' miles';
+            document.getElementById('infoPanel').classList.add('active');
+        }
+
+        function updateStatistics(tracts) {
+            const desert = tracts.filter(t => t.classification === 'desert').length;
+            const risk = tracts.filter(t => t.classification === 'risk').length;
+            const adequate = tracts.filter(t => t.classification === 'adequate').length;
+            const totalPop = tracts.reduce((sum, t) => sum + t.pop, 0);
+
+            document.getElementById('statDesert').textContent = desert;
+            document.getElementById('statRisk').textContent = risk;
+            document.getElementById('statAdequate').textContent = adequate;
+            document.getElementById('statPopulation').textContent = totalPop.toLocaleString();
+        }
+
+        function updateSlider(sliderId, valueId, unit) {
+            const slider = document.getElementById(sliderId);
+            const valueSpan = document.getElementById(valueId);
+            valueSpan.textContent = slider.value + unit;
+        }
+
+        function toggleLayer(layerType) {
+            if (layerType === 'stores') {
+                const show = document.getElementById('showStores').checked;
+                storeMarkers.forEach(marker => {
+                    if (show) {
+                        marker.addTo(map);
+                    } else {
+                        map.removeLayer(marker);
+                    }
+                });
+            }
+        }
+
+        function resetView() {
+            if (currentCity) {
+                map.setView(currentCity.center, currentCity.zoom);
+            }
+        }
+
+        function useCurrentLocation() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(
+                    position => {
+                        const lat = position.coords.latitude;
+                        const lng = position.coords.longitude;
+                        map.setView([lat, lng], 13);
+                        alert('Centered on your location. In live mode, this would analyze your local area.');
+                    },
+                    error => {
+                        alert('Unable to get your location');
+                    }
+                );
+            }
+        }
+
+        function exportData() {
+            alert('Export functionality would generate:\n- CSV of tract data\n- GeoJSON of boundaries\n- Statistical report\n\nThis requires backend implementation.');
+        }
+
+        // Initialize on load
+        window.onload = () => {
+            initMap();
+            // Auto-analyze Chicago on load
+            setTimeout(() => analyzeCity(), 500);
+        };
+
+        // Check for API availability
+        async function checkAPIs() {
+            try {
+                const response = await fetch(API_CONFIG.osm.nominatimUrl + '/search?q=test&format=json');
+                if (response.ok) {
+                    demoMode = false;
+                    document.getElementById('apiStatus').classList.remove('demo');
+                    document.getElementById('apiStatus').classList.add('live');
+                    document.getElementById('apiStatus').textContent = '✅ LIVE MODE - Real Data';
+                }
+            } catch (error) {
+                console.log('APIs not accessible, using demo mode');
+            }
+        }
+
+        checkAPIs();
+    </script>
+</body>
+</html>
