@@ -468,7 +468,11 @@
                 </div>
                 <button class="btn btn-primary" onclick="analyzeCity()">Analyze Food Access</button>
                 <button class="btn btn-secondary" onclick="useCurrentLocation()">Use My Location</button>
-                
+
+                <div class="checkbox-item" style="margin: 15px 0;">
+                   <input type="checkbox" id="useLiveData" onchange="toggleLiveData()">
+                   <label for="useLiveData">Use Live Census Data (requires API key)</label>
+                </div>
                 <div class="data-sources">
                     <h4>Data Sources</h4>
                     <ul id="dataSourcesList">
@@ -898,6 +902,17 @@
         }
 
         checkAPIs();
+        function toggleLiveData() {
+            demoMode = !document.getElementById('useLiveData').checked;
+            const statusDiv = document.getElementById('apiStatus');
+            if (demoMode) {
+                statusDiv.textContent = '🔸 DEMO MODE - Using Sample Data';
+                statusDiv.className = 'api-status demo';
+            } else {
+                statusDiv.textContent = '✅ LIVE MODE - Real Census Data';
+                statusDiv.className = 'api-status live';
+            }
+        }
     </script>
 </body>
 </html>
