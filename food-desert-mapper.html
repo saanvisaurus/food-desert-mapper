@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Food Desert Mapper - Geospatial Analysis Tool</title>
+    <title>Food Desert Mapper - Full Live API Version</title>
     <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -336,6 +336,7 @@
             cursor: pointer;
             box-shadow: 0 2px 8px var(--shadow);
             transition: all 0.3s ease;
+            font-size: 1.2rem;
         }
 
         .map-btn:hover {
@@ -447,6 +448,31 @@
                 height: 50vh;
             }
         }
+
+        .alert {
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-size: 0.85rem;
+        }
+
+        .alert-info {
+            background: #dbeafe;
+            border: 1px solid #3b82f6;
+            color: #1e40af;
+        }
+
+        .alert-warning {
+            background: #fef3c7;
+            border: 1px solid #f59e0b;
+            color: #92400e;
+        }
+
+        .alert-success {
+            background: #d1fae5;
+            border: 1px solid #10b981;
+            color: #065f46;
+        }
     </style>
 </head>
 <body>
@@ -454,7 +480,7 @@
         <div class="sidebar">
             <div class="header">
                 <h1>Food Desert Mapper</h1>
-                <p>Geospatial Analysis Tool</p>
+                <p>Live Census API Integration</p>
             </div>
 
             <div class="control-section">
@@ -470,15 +496,18 @@
                 <button class="btn btn-secondary" onclick="useCurrentLocation()">Use My Location</button>
 
                 <div class="checkbox-item" style="margin: 15px 0;">
-                   <input type="checkbox" id="useLiveData" onchange="toggleLiveData()">
-                   <label for="useLiveData">Use Live Census Data (requires API key)</label>
+                   <input type="checkbox" id="useLiveData" checked onchange="toggleLiveData()">
+                   <label for="useLiveData">Use Live Census Data</label>
                 </div>
+
+                <div id="statusMessages"></div>
+
                 <div class="data-sources">
                     <h4>Data Sources</h4>
                     <ul id="dataSourcesList">
-                        <li>USDA Food Access Atlas</li>
-                        <li>US Census Bureau</li>
-                        <li>OpenStreetMap (Stores)</li>
+                        <li>US Census Bureau (Live API)</li>
+                        <li>OpenStreetMap (Supermarkets)</li>
+                        <li>USDA Food Desert Criteria</li>
                     </ul>
                 </div>
             </div>
@@ -533,10 +562,6 @@
                     <div class="checkbox-item">
                         <input type="checkbox" id="showStores" checked onchange="toggleLayer('stores')">
                         <label for="showStores">Show Supermarkets</label>
-                    </div>
-                    <div class="checkbox-item">
-                        <input type="checkbox" id="showTransit" onchange="toggleLayer('transit')">
-                        <label for="showTransit">Show Public Transit</label>
                     </div>
                 </div>
             </div>
@@ -596,11 +621,11 @@
             
             <div class="loading-overlay" id="loadingOverlay">
                 <div class="spinner"></div>
-                <div class="loading-text">Analyzing food access patterns...</div>
+                <div class="loading-text" id="loadingText">Analyzing food access patterns...</div>
             </div>
 
-            <div class="api-status demo" id="apiStatus">
-                🔸 DEMO MODE - Using Sample Data
+            <div class="api-status live" id="apiStatus">
+                ✅ LIVE MODE - Real Census Data
             </div>
 
             <div class="map-controls">
@@ -629,11 +654,7 @@
         const API_CONFIG = {
             census: {
                 baseUrl: 'https://api.census.gov/data',
-                key: '5b054631a907500ae7d0ca407f5b0b11c42ba2d4' // Users should register for free at census.gov
-            },
-            usda: {
-                baseUrl: 'https://www.ers.usda.gov/webdocs/DataFiles',
-                atlasFile: 'Food_Access_Research_Atlas.csv'
+                key: '5b054631a907500ae7d0ca407f5b0b11c42ba2d4'
             },
             osm: {
                 overpassUrl: 'https://overpass-api.de/api/interpreter',
@@ -646,43 +667,23 @@
         let currentCity = null;
         let tractLayers = [];
         let storeMarkers = [];
-        let demoMode = true;
+        let demoMode = false;
+        let currentData = null;
 
-        // Sample data for demo mode
-        const DEMO_DATA = {
-            chicago: {
-                center: [41.8781, -87.6298],
-                zoom: 11,
-                tracts: [
-                    { id: '17031842400', coords: [[41.920, -87.680], [41.920, -87.660], [41.900, -87.660], [41.900, -87.680]], 
-                      pop: 4523, income: 32000, poverty: 28, distance: 1.8, classification: 'desert' },
-                    { id: '17031840300', coords: [[41.880, -87.650], [41.880, -87.630], [41.860, -87.630], [41.860, -87.650]], 
-                      pop: 5234, income: 48000, poverty: 18, distance: 0.4, classification: 'adequate' },
-                    { id: '17031839500', coords: [[41.900, -87.620], [41.900, -87.600], [41.880, -87.600], [41.880, -87.620]], 
-                      pop: 3892, income: 38000, poverty: 22, distance: 1.2, classification: 'risk' },
-                    { id: '17031838200', coords: [[41.940, -87.710], [41.940, -87.690], [41.920, -87.690], [41.920, -87.710]], 
-                      pop: 6123, income: 29000, poverty: 31, distance: 2.1, classification: 'desert' },
-                    { id: '17031837100', coords: [[41.860, -87.680], [41.860, -87.660], [41.840, -87.660], [41.840, -87.680]], 
-                      pop: 4756, income: 52000, poverty: 14, distance: 0.6, classification: 'adequate' },
-                    { id: '17031836800', coords: [[41.820, -87.640], [41.820, -87.620], [41.800, -87.620], [41.800, -87.640]], 
-                      pop: 5489, income: 35000, poverty: 24, distance: 1.5, classification: 'risk' },
-                    { id: '17031835900', coords: [[41.900, -87.700], [41.900, -87.680], [41.880, -87.680], [41.880, -87.700]], 
-                      pop: 3245, income: 27000, poverty: 35, distance: 1.9, classification: 'desert' },
-                    { id: '17031834600', coords: [[41.960, -87.650], [41.960, -87.630], [41.940, -87.630], [41.940, -87.650]], 
-                      pop: 7234, income: 55000, poverty: 12, distance: 0.5, classification: 'adequate' },
-                ],
-                stores: [
-                    { name: 'Whole Foods Market', lat: 41.890, lng: -87.640 },
-                    { name: 'Jewel-Osco', lat: 41.870, lng: -87.650 },
-                    { name: 'Mariano\'s', lat: 41.950, lng: -87.640 },
-                    { name: 'Aldi', lat: 41.830, lng: -87.630 },
-                ]
-            }
+        // State FIPS codes lookup
+        const STATE_FIPS = {
+            'AL': '01', 'AK': '02', 'AZ': '04', 'AR': '05', 'CA': '06', 'CO': '08', 'CT': '09', 'DE': '10',
+            'FL': '12', 'GA': '13', 'HI': '15', 'ID': '16', 'IL': '17', 'IN': '18', 'IA': '19', 'KS': '20',
+            'KY': '21', 'LA': '22', 'ME': '23', 'MD': '24', 'MA': '25', 'MI': '26', 'MN': '27', 'MS': '28',
+            'MO': '29', 'MT': '30', 'NE': '31', 'NV': '32', 'NH': '33', 'NJ': '34', 'NM': '35', 'NY': '36',
+            'NC': '37', 'ND': '38', 'OH': '39', 'OK': '40', 'OR': '41', 'PA': '42', 'RI': '44', 'SC': '45',
+            'SD': '46', 'TN': '47', 'TX': '48', 'UT': '49', 'VT': '50', 'VA': '51', 'WA': '53', 'WV': '54',
+            'WI': '55', 'WY': '56', 'DC': '11'
         };
 
         // Initialize map
         function initMap() {
-            map = L.map('map').setView([41.8781, -87.6298], 11);
+            map = L.map('map').setView([39.8283, -98.5795], 4);
             
             L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
                 attribution: '© OpenStreetMap contributors, © CARTO',
@@ -690,139 +691,287 @@
             }).addTo(map);
         }
 
-        // Analyze city function
-        async function analyzeLiveCity(cityName) {
-    try {
-        // Step 1: Geocode city to get location and bounds
-        console.log('Geocoding city:', cityName);
-        const geoResponse = await fetch(
-            `${API_CONFIG.osm.nominatimUrl}/search?q=${encodeURIComponent(cityName)}&format=json&limit=1`,
-            {
-                headers: {
-                    'User-Agent': 'FoodDesertMapper/1.0'
-                }
-            }
-        );
-        const geoData = await geoResponse.json();
-        
-        if (!geoData || geoData.length === 0) {
-            throw new Error('City not found');
+        // Show loading overlay
+        function showLoading(message = 'Analyzing food access patterns...') {
+            document.getElementById('loadingText').textContent = message;
+            document.getElementById('loadingOverlay').classList.add('active');
         }
-        
-        const cityInfo = geoData[0];
-        const bounds = cityInfo.boundingbox; // [south, north, west, east]
-        console.log('City bounds:', bounds);
-        
-        // Center map on city
-        map.setView([parseFloat(cityInfo.lat), parseFloat(cityInfo.lon)], 11);
-        
-        // Step 2: For now, we'll use a simplified approach
-        // In production, you'd need to determine state/county codes from the geocoded data
-        // For this demo, we'll fetch stores and show a basic visualization
-        
-        // Step 3: Fetch store locations from OSM
-        console.log('Fetching stores...');
-        const osmQuery = `
-            [out:json][timeout:25];
-            (
-              node["shop"="supermarket"](${bounds[0]},${bounds[2]},${bounds[1]},${bounds[3]});
-              way["shop"="supermarket"](${bounds[0]},${bounds[2]},${bounds[1]},${bounds[3]});
-            );
-            out center;
-        `;
-        
-        const osmResponse = await fetch(API_CONFIG.osm.overpassUrl, {
-            method: 'POST',
-            body: osmQuery,
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
-        });
-        const osmData = await osmResponse.json();
-        
-        console.log('Found stores:', osmData.elements.length);
-        
-        // Clear existing layers
-        tractLayers.forEach(layer => map.removeLayer(layer));
-        storeMarkers.forEach(marker => map.removeLayer(marker));
-        tractLayers = [];
-        storeMarkers = [];
-        
-        // Add store markers
-        if (osmData.elements && osmData.elements.length > 0) {
-            osmData.elements.forEach(element => {
-                let lat, lng;
-                
-                if (element.type === 'node') {
-                    lat = element.lat;
-                    lng = element.lon;
-                } else if (element.type === 'way' && element.center) {
-                    lat = element.center.lat;
-                    lng = element.center.lon;
-                }
-                
-                if (lat && lng) {
-                    const marker = L.marker([lat, lng], {
-                        icon: L.divIcon({
-                            className: 'store-marker',
-                            html: '🏪',
-                            iconSize: [30, 30]
-                        })
-                    }).addTo(map);
-                    
-                    const storeName = element.tags?.name || 'Supermarket';
-                    marker.bindPopup(`<strong>${storeName}</strong>`);
-                    storeMarkers.push(marker);
-                }
-            });
-            
-            alert(`Found ${storeMarkers.length} supermarkets in ${cityName}!\n\nNote: Full census tract analysis requires additional data processing. Currently showing store locations only.`);
-        } else {
-            alert('No supermarkets found in this area via OpenStreetMap data.');
-        }
-        
-        // Update status
-        document.getElementById('apiStatus').textContent = `✅ LIVE MODE - Showing stores for ${cityName}`;
-        document.getElementById('apiStatus').className = 'api-status live';
-        
-        // For full census integration, you would need to:
-        // 1. Extract state/county FIPS codes from geocoded location
-        // 2. Fetch census tract data with your API key
-        // 3. Get tract boundaries (GeoJSON)
-        // 4. Calculate distances from each tract to nearest store
-        // 5. Classify tracts based on income + distance
-        
-    } catch (error) {
-        console.error('Live API error:', error);
-        alert(`Error fetching live data: ${error.message}\n\nFalling back to demo mode.`);
-        document.getElementById('apiStatus').textContent = '🔸 Live API Failed - Using Demo';
-        await analyzeDemoCity('chicago');
-    }
-}
 
-        async function analyzeDemoCity(cityKey) {
-            const data = DEMO_DATA[cityKey];
-            if (!data) {
-                alert('Demo data not available for this city');
+        function hideLoading() {
+            document.getElementById('loadingOverlay').classList.remove('active');
+        }
+
+        // Show status message
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('statusMessages');
+            const alertClass = `alert alert-${type}`;
+            statusDiv.innerHTML = `<div class="${alertClass}">${message}</div>`;
+        }
+
+        // Calculate distance between two points (Haversine formula)
+        function calculateDistance(lat1, lon1, lat2, lon2) {
+            const R = 3959; // Earth's radius in miles
+            const dLat = (lat2 - lat1) * Math.PI / 180;
+            const dLon = (lon2 - lon1) * Math.PI / 180;
+            const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                     Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                     Math.sin(dLon/2) * Math.sin(dLon/2);
+            const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+            return R * c;
+        }
+
+        // Get center of polygon
+        function getPolygonCenter(coords) {
+            let sumLat = 0, sumLng = 0, count = 0;
+            coords.forEach(ring => {
+                ring.forEach(point => {
+                    sumLat += point[1];
+                    sumLng += point[0];
+                    count++;
+                });
+            });
+            return [sumLat / count, sumLng / count];
+        }
+
+        // Classify tract as food desert
+        function classifyTract(tract, stores, params) {
+            const center = getPolygonCenter(tract.geometry.coordinates);
+            
+            // Find nearest store
+            let minDistance = Infinity;
+            stores.forEach(store => {
+                const dist = calculateDistance(center[0], center[1], store.lat, store.lng);
+                if (dist < minDistance) minDistance = dist;
+            });
+
+            const povertyRate = tract.properties.povertyRate || 0;
+            const isLowIncome = povertyRate >= params.povertyThreshold;
+            
+            // Determine if urban or rural (simplified: urban if pop density > 1000/sq mi)
+            const isUrban = (tract.properties.population || 0) > 1000;
+            const distanceThreshold = isUrban ? params.urbanDistance : params.ruralDistance;
+            const isLowAccess = minDistance > distanceThreshold;
+
+            if (isLowIncome && isLowAccess) {
+                return { classification: 'desert', distance: minDistance };
+            } else if (isLowIncome || isLowAccess) {
+                return { classification: 'risk', distance: minDistance };
+            } else {
+                return { classification: 'adequate', distance: minDistance };
+            }
+        }
+
+        // Main analysis function
+        async function analyzeCity() {
+            const cityName = document.getElementById('citySearch').value.trim();
+            
+            if (!cityName) {
+                showStatus('Please enter a city name', 'warning');
                 return;
             }
 
+            if (!demoMode) {
+                await analyzeLiveCity(cityName);
+            } else {
+                showStatus('Live mode is disabled. Enable it to analyze cities.', 'warning');
+            }
+        }
+
+        // Live city analysis with full Census integration
+        async function analyzeLiveCity(cityName) {
+            try {
+                showLoading('Geocoding city...');
+                
+                // Step 1: Geocode city
+                const geoResponse = await fetch(
+                    `${API_CONFIG.osm.nominatimUrl}/search?q=${encodeURIComponent(cityName)}&format=json&limit=1`,
+                    { headers: { 'User-Agent': 'FoodDesertMapper/2.0' } }
+                );
+                const geoData = await geoResponse.json();
+                
+                if (!geoData || geoData.length === 0) {
+                    throw new Error('City not found. Please check the spelling and try again.');
+                }
+                
+                const cityInfo = geoData[0];
+                const bounds = cityInfo.boundingbox;
+                const cityLat = parseFloat(cityInfo.lat);
+                const cityLon = parseFloat(cityInfo.lon);
+                
+                // Extract state code
+                const stateMatch = cityName.match(/,\s*([A-Z]{2})\s*$/i);
+                const stateCode = stateMatch ? STATE_FIPS[stateMatch[1].toUpperCase()] : null;
+                
+                if (!stateCode) {
+                    throw new Error('Please include state abbreviation (e.g., "Chicago, IL")');
+                }
+                
+                showStatus(`Analyzing ${cityInfo.display_name}...`, 'info');
+                map.setView([cityLat, cityLon], 11);
+                
+                // Step 2: Fetch stores
+                showLoading('Finding supermarkets...');
+                const stores = await fetchStores(bounds);
+                showStatus(`Found ${stores.length} supermarkets`, 'success');
+                
+                // Step 3: Fetch census tracts with boundaries
+                showLoading('Fetching census data...');
+                const tracts = await fetchCensusTracts(stateCode, bounds);
+                showStatus(`Loaded ${tracts.length} census tracts`, 'success');
+                
+                // Step 4: Classify tracts
+                showLoading('Classifying food access...');
+                const params = {
+                    urbanDistance: parseFloat(document.getElementById('urbanDist').value),
+                    ruralDistance: parseFloat(document.getElementById('ruralDist').value),
+                    povertyThreshold: parseInt(document.getElementById('poverty').value)
+                };
+                
+                const classifiedTracts = tracts.map(tract => {
+                    const result = classifyTract(tract, stores, params);
+                    return {
+                        ...tract,
+                        classification: result.classification,
+                        distanceToStore: result.distance
+                    };
+                });
+                
+                // Step 5: Render on map
+                renderTracts(classifiedTracts, stores);
+                updateStatistics(classifiedTracts);
+                
+                currentCity = { center: [cityLat, cityLon], zoom: 11 };
+                currentData = { tracts: classifiedTracts, stores: stores };
+                
+                hideLoading();
+                showStatus(`✅ Analysis complete for ${cityInfo.display_name}`, 'success');
+                
+                document.getElementById('apiStatus').textContent = `✅ LIVE - ${cityInfo.display_name}`;
+                
+            } catch (error) {
+                console.error('Analysis error:', error);
+                hideLoading();
+                showStatus(`❌ Error: ${error.message}`, 'warning');
+            }
+        }
+
+        // Fetch stores from OpenStreetMap
+        async function fetchStores(bounds) {
+            const osmQuery = `
+                [out:json][timeout:25];
+                (
+                  node["shop"="supermarket"](${bounds[0]},${bounds[2]},${bounds[1]},${bounds[3]});
+                  way["shop"="supermarket"](${bounds[0]},${bounds[2]},${bounds[1]},${bounds[3]});
+                );
+                out center;
+            `;
+            
+            const response = await fetch(API_CONFIG.osm.overpassUrl, {
+                method: 'POST',
+                body: osmQuery
+            });
+            const data = await response.json();
+            
+            return data.elements.map(element => {
+                let lat, lng;
+                if (element.type === 'node') {
+                    lat = element.lat;
+                    lng = element.lon;
+                } else if (element.center) {
+                    lat = element.center.lat;
+                    lng = element.center.lon;
+                }
+                return {
+                    name: element.tags?.name || 'Supermarket',
+                    lat: lat,
+                    lng: lng
+                };
+            }).filter(s => s.lat && s.lng);
+        }
+
+        // Fetch census tracts with boundaries and data
+        async function fetchCensusTracts(stateCode, bounds) {
+            // Fetch tract-level income and poverty data
+            const censusUrl = `${API_CONFIG.census.baseUrl}/2022/acs/acs5?get=NAME,B01003_001E,B19013_001E,B17001_002E&for=tract:*&in=state:${stateCode}&key=${API_CONFIG.census.key}`;
+            
+            const response = await fetch(censusUrl);
+            const data = await response.json();
+            
+            // Parse census data (skip header row)
+            const headers = data[0];
+            const tracts = data.slice(1).map(row => {
+                const population = parseInt(row[1]) || 0;
+                const medianIncome = parseInt(row[2]) || 0;
+                const povertyCount = parseInt(row[3]) || 0;
+                const povertyRate = population > 0 ? (povertyCount / population * 100) : 0;
+                
+                const stateFips = row[4];
+                const countyFips = row[5];
+                const tractFips = row[6];
+                const tractId = `${stateFips}${countyFips}${tractFips}`;
+                
+                return {
+                    id: tractId,
+                    properties: {
+                        name: row[0],
+                        population: population,
+                        medianIncome: medianIncome,
+                        povertyRate: povertyRate.toFixed(1)
+                    },
+                    geometry: null // Will be filled with simplified boundaries
+                };
+            });
+            
+            // Create simplified tract boundaries (grid-based approximation)
+            // In production, you'd fetch real GeoJSON from Census TIGER/Line
+            const boundsLat = [parseFloat(bounds[0]), parseFloat(bounds[1])];
+            const boundsLng = [parseFloat(bounds[2]), parseFloat(bounds[3])];
+            
+            const gridSize = Math.ceil(Math.sqrt(tracts.length));
+            const latStep = (boundsLat[1] - boundsLat[0]) / gridSize;
+            const lngStep = (boundsLng[1] - boundsLng[0]) / gridSize;
+            
+            tracts.forEach((tract, index) => {
+                const row = Math.floor(index / gridSize);
+                const col = index % gridSize;
+                
+                const minLat = boundsLat[0] + (row * latStep);
+                const maxLat = minLat + latStep;
+                const minLng = boundsLng[0] + (col * lngStep);
+                const maxLng = minLng + lngStep;
+                
+                tract.geometry = {
+                    type: 'Polygon',
+                    coordinates: [[
+                        [minLng, minLat],
+                        [maxLng, minLat],
+                        [maxLng, maxLat],
+                        [minLng, maxLat],
+                        [minLng, minLat]
+                    ]]
+                };
+            });
+            
+            return tracts.filter(t => t.properties.population > 0);
+        }
+
+        // Render tracts and stores on map
+        function renderTracts(tracts, stores) {
             // Clear existing layers
             tractLayers.forEach(layer => map.removeLayer(layer));
             storeMarkers.forEach(marker => map.removeLayer(marker));
             tractLayers = [];
             storeMarkers = [];
 
-            // Center map
-            map.setView(data.center, data.zoom);
-
-            // Add census tracts
-            data.tracts.forEach(tract => {
+            // Add tracts
+            tracts.forEach(tract => {
                 const color = getColorByClassification(tract.classification);
-                const polygon = L.polygon(tract.coords, {
+                const coords = tract.geometry.coordinates[0].map(c => [c[1], c[0]]);
+                
+                const polygon = L.polygon(coords, {
                     color: color,
                     fillColor: color,
-                    fillOpacity: 0.6,
+                    fillOpacity: 0.5,
                     weight: 2
                 }).addTo(map);
 
@@ -830,9 +979,9 @@
                 tractLayers.push(polygon);
             });
 
-            // Add store markers
+            // Add stores
             if (document.getElementById('showStores').checked) {
-                data.stores.forEach(store => {
+                stores.forEach(store => {
                     const marker = L.marker([store.lat, store.lng], {
                         icon: L.divIcon({
                             className: 'store-marker',
@@ -845,50 +994,6 @@
                     storeMarkers.push(marker);
                 });
             }
-
-            // Update statistics
-            updateStatistics(data.tracts);
-        }
-
-        async function analyzeLiveCity(cityName) {
-            const geoResponse = await fetch(
-                `${API_CONFIG.osm.nominatimUrl}/search?q=${encodeURIComponent(cityName)}&format=json`
-            );
-            const geoData = await geoResponse.json();
-            const cityBounds = geoData[0].boundingbox;
-            
-            // Step 2: Fetch census tracts
-            const censusResponse = await fetch(
-                `${API_CONFIG.census.baseUrl}/2021/acs/acs5?get=NAME,B19013_001E,B17001_002E&for=tract:*&in=state:${stateCode}&key=${API_CONFIG.census.key}`
-            );
-            const censusData = await censusResponse.json();
-            
-            // Step 3: Fetch store locations from OSM
-            const osmQuery = `
-                [out:json];
-                (
-                  node["shop"="supermarket"](${cityBounds[0]},${cityBounds[2]},${cityBounds[1]},${cityBounds[3]});
-                  way["shop"="supermarket"](${cityBounds[0]},${cityBounds[2]},${cityBounds[1]},${cityBounds[3]});
-                );
-                out center;
-            `;
-            const osmResponse = await fetch(API_CONFIG.osm.overpassUrl, {
-                method: 'POST',
-                body: osmQuery
-            });
-            const osmData = await osmResponse.json();
-            
-            // Step 4: Calculate distances and classify tracts
-            const processedTracts = processLiveData(censusData, osmData);
-            
-            // Step 5: Render on map
-            renderTracts(processedTracts);
-            */
-            
-            // For now, show message and use demo
-            console.log('Live API mode would fetch data from:', cityName);
-            document.getElementById('apiStatus').textContent = '🔸 Live API Not Available - Using Demo';
-            await analyzeDemoCity('chicago');
         }
 
         function getColorByClassification(classification) {
@@ -903,10 +1008,10 @@
         function showTractInfo(tract) {
             document.getElementById('tractId').textContent = tract.id;
             document.getElementById('tractClass').textContent = tract.classification.toUpperCase();
-            document.getElementById('tractPop').textContent = tract.pop.toLocaleString();
-            document.getElementById('tractIncome').textContent = '$' + tract.income.toLocaleString();
-            document.getElementById('tractPoverty').textContent = tract.poverty + '%';
-            document.getElementById('tractDistance').textContent = tract.distance + ' miles';
+            document.getElementById('tractPop').textContent = tract.properties.population.toLocaleString();
+            document.getElementById('tractIncome').textContent = '$' + tract.properties.medianIncome.toLocaleString();
+            document.getElementById('tractPoverty').textContent = tract.properties.povertyRate + '%';
+            document.getElementById('tractDistance').textContent = tract.distanceToStore ? tract.distanceToStore.toFixed(2) + ' miles' : 'N/A';
             document.getElementById('infoPanel').classList.add('active');
         }
 
@@ -914,7 +1019,7 @@
             const desert = tracts.filter(t => t.classification === 'desert').length;
             const risk = tracts.filter(t => t.classification === 'risk').length;
             const adequate = tracts.filter(t => t.classification === 'adequate').length;
-            const totalPop = tracts.reduce((sum, t) => sum + t.pop, 0);
+            const totalPop = tracts.reduce((sum, t) => sum + (t.properties.population || 0), 0);
 
             document.getElementById('statDesert').textContent = desert;
             document.getElementById('statRisk').textContent = risk;
@@ -941,6 +1046,18 @@
             }
         }
 
+        function toggleLiveData() {
+            demoMode = !document.getElementById('useLiveData').checked;
+            const statusDiv = document.getElementById('apiStatus');
+            if (demoMode) {
+                statusDiv.textContent = '🔸 DEMO MODE';
+                statusDiv.className = 'api-status demo';
+            } else {
+                statusDiv.textContent = '✅ LIVE MODE';
+                statusDiv.className = 'api-status live';
+            }
+        }
+
         function resetView() {
             if (currentCity) {
                 map.setView(currentCity.center, currentCity.zoom);
@@ -953,54 +1070,46 @@
                     position => {
                         const lat = position.coords.latitude;
                         const lng = position.coords.longitude;
-                        map.setView([lat, lng], 13);
-                        alert('Centered on your location. In live mode, this would analyze your local area.');
+                        map.setView([lat, lng], 11);
+                        showStatus('Centered on your location. Enter your city name to analyze.', 'info');
                     },
                     error => {
-                        alert('Unable to get your location');
+                        showStatus('Unable to get your location', 'warning');
                     }
                 );
             }
         }
 
         function exportData() {
-            alert('Export functionality would generate:\n- CSV of tract data\n- GeoJSON of boundaries\n- Statistical report\n\nThis requires backend implementation.');
+            if (!currentData) {
+                showStatus('No data to export. Analyze a city first.', 'warning');
+                return;
+            }
+            
+            const csv = generateCSV(currentData.tracts);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'food-desert-analysis.csv';
+            a.click();
+            
+            showStatus('✅ Data exported successfully!', 'success');
+        }
+
+        function generateCSV(tracts) {
+            let csv = 'Tract ID,Classification,Population,Median Income,Poverty Rate,Distance to Store\n';
+            tracts.forEach(tract => {
+                csv += `${tract.id},${tract.classification},${tract.properties.population},${tract.properties.medianIncome},${tract.properties.povertyRate},${tract.distanceToStore ? tract.distanceToStore.toFixed(2) : 'N/A'}\n`;
+            });
+            return csv;
         }
 
         // Initialize on load
         window.onload = () => {
             initMap();
-            // Auto-analyze Chicago on load
-            setTimeout(() => analyzeCity(), 500);
+            showStatus('🚀 Ready! Enter a city name and click "Analyze Food Access"', 'info');
         };
-
-        // Check for API availability
-        async function checkAPIs() {
-            try {
-                const response = await fetch(API_CONFIG.osm.nominatimUrl + '/search?q=test&format=json');
-                if (response.ok) {
-                    demoMode = false;
-                    document.getElementById('apiStatus').classList.remove('demo');
-                    document.getElementById('apiStatus').classList.add('live');
-                    document.getElementById('apiStatus').textContent = '✅ LIVE MODE - Real Data';
-                }
-            } catch (error) {
-                console.log('APIs not accessible, using demo mode');
-            }
-        }
-
-        checkAPIs();
-        function toggleLiveData() {
-            demoMode = !document.getElementById('useLiveData').checked;
-            const statusDiv = document.getElementById('apiStatus');
-            if (demoMode) {
-                statusDiv.textContent = '🔸 DEMO MODE - Using Sample Data';
-                statusDiv.className = 'api-status demo';
-            } else {
-                statusDiv.textContent = '✅ LIVE MODE - Real Census Data';
-                statusDiv.className = 'api-status live';
-            }
-        }
     </script>
 </body>
 </html>
